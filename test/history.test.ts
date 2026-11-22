@@ -89,6 +89,11 @@ test("categories come from the shop, then from what was ever bought, and what ne
   assert.equal(category(0), ""); // in neither
   assert.ok(summarize(ledger).categories.some((one) => one.name === "Other"));
   assert.ok(ledger.products.every((product) => product[2] !== null));
+  // a delisted product first seen in a later order is named from what the stats said before
+  const late = shop.products[2]!;
+  const ledgerBefore = await loadLedger(itx, "personal");
+  ledgerBefore.products = ledgerBefore.products.filter(([sku]) => sku !== late.sku);
+  assert.equal(ledgerBefore.known![late.sku], "Mjólkurvörur og egg");
   // a product seen later that the shop does not name: the stats are not read again within a week
   shop.list.unshift({ ...shop.list[0]!, token: "later", lines: [{ ...shop.list[0]!.lines[0]!, sku: "gone-1", productName: "gone-1 - Horfin vara", quantity: 1, total: 500 }], total: 500 });
   await all(NOW + FRESH_MS + 1);

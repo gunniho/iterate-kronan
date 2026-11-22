@@ -37,6 +37,9 @@ export type Ledger = {
   v: 1;
   checkedAt?: string;
   statsAt?: string;
+  /** The top-level category of everything the account ever bought, by SKU, as the purchase
+   *  stats named it: it names a product of a later order that Krónan no longer sells. */
+  known?: Record<string, string>;
   products: [string, string, string | null][];
   orders: { t: string; d: string; type: string; total: number; l: [number, number, number][] }[];
   skipped: string[];
@@ -238,11 +241,13 @@ async function categorize(
   now: number,
 ): Promise<void> {
   const missing = () => ledger.products.filter((product) => product[2] === null);
+  const known = (ledger.known ??= {});
+  for (const product of missing()) if (known[product[0]]) product[2] = known[product[0]]!;
   if (!missing().length) return;
   const bySku = new Map(ledger.products.map((product) => [product[0], product]));
   const name = (sku: unknown, path: unknown) => {
     const product = bySku.get(String(sku));
-    if (product && product[2] === null && topCategory(path)) product[2] = topCategory(path);
+    if (product && !product[2] && topCategory(path)) product[2] = topCategory(path);
   };
   for (let todo = missing(), at = 0; at < todo.length; at += 100) {
     const answer = await ask<{ results?: { sku?: unknown; categoryPath?: unknown }[] }>(
@@ -260,7 +265,12 @@ async function categorize(
         next?: unknown;
       }>(itx, account, `/product-purchase-stats/?include_ignored=true&limit=150&offset=${offset}`);
       const results = page.results ?? [];
-      for (const { product } of results) name(product?.sku, product?.categoryPath);
+      for (const { product } of results) {
+        const category = topCategory(product?.categoryPath);
+        if (category && typeof product?.sku === "string") known[product.sku.slice(0, 40)] = category;
+        // it also names what an earlier look left unnamed
+        name(product?.sku, product?.categoryPath);
+      }
       offset += results.length;
       if (!page.next || !results.length) break;
     }

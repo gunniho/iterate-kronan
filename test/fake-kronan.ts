@@ -63,7 +63,9 @@ export function fakeKronan(
       .filter(() => random() < 0.45)
       .map((product, id) => {
         const quantity = 1 + Math.floor(random() * 3);
-        const unitPrice = Math.round(product.price * (0.9 + random() * 0.3));
+        // prices creep up about 7% a year, with an offer now and then
+        const years = (when.getTime() - start) / (365 * 24 * 60 * 60 * 1000);
+        const unitPrice = Math.round(product.price * (1 + 0.07 * years) * (random() < 0.1 ? 0.8 : 0.98 + random() * 0.04));
         return {
           id,
           productName: `${product.sku} - ${product.name}`,

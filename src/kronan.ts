@@ -11,7 +11,7 @@ import {
   type KronanFetchItx,
 } from "./api.js";
 import { serveDashboard } from "./dashboard.js";
-import { readLedger, summarize, syncStep, type HistoryItx } from "./history.js";
+import { priceHistory, readLedger, summarize, syncStep, type HistoryItx } from "./history.js";
 import { serveContinue, serveSettings } from "./page.js";
 
 export {
@@ -31,10 +31,13 @@ export {
   ledgerKey,
   loadLedger,
   orderKey,
+  priceHistory,
   summarize,
   syncStep,
   type HistoryItx,
   type Ledger,
+  type PriceSeries,
+  type PriceTrack,
   type StoredOrder,
   type Summary,
   type SyncResult,
@@ -281,6 +284,8 @@ export function kronan(options: { origin?: string } = {}): Integration {
         accounts,
         account,
         summary: ledger ? summarize(ledger, year) : null,
+        // how prices moved since the first order: a matter of all time, not of one year
+        prices: ledger && year === null ? priceHistory(ledger) : null,
         checkedAt: ledger?.checkedAt ?? null,
       });
     },

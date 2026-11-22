@@ -1,4 +1,4 @@
-import type { Summary } from "./history.js";
+import type { PriceSeries, PriceTrack, Summary } from "./history.js";
 import { esc, html } from "./page.js";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -91,6 +91,77 @@ function productTable(products: Summary["products"]): string {
     .join("")}</tbody></table>`;
 }
 
+const percent = (change: number): string =>
+  `${change > 0 ? "+" : change < 0 ? "−" : ""}${Math.abs(change * 100).toFixed(Math.abs(change) < 0.1 ? 1 : 0)}%`;
+const direction = (change: number): string =>
+  change > 0.005 ? "up" : change < -0.005 ? "down" : "flat";
+
+/** The index of the regulars' prices as a line: 100 is each product's price when first bought. */
+function indexChart(index: PriceTrack["index"]): string {
+  if (index.length < 2) return "";
+  const [W, H, left, bottom, top] = [960, 240, 46, 24, 12];
+  const values = index.map((point) => point.value);
+  const step = Math.max(5, Math.ceil((Math.max(...values, 105) - Math.min(...values, 100)) / 4 / 5) * 5);
+  const low = Math.floor(Math.min(...values, 100) / step) * step;
+  const high = Math.ceil(Math.max(...values, 105) / step) * step;
+  const [plotW, plotH] = [W - left - 8, H - bottom - top];
+  const x = (at: number) => left + (at / (index.length - 1)) * plotW;
+  const y = (value: number) => top + plotH - ((value - low) / (high - low)) * plotH;
+  let grid = "";
+  for (let value = low; value <= high; value += step)
+    grid += `<line class="${value === 100 ? "base" : "grid"}" x1="${left}" x2="${W}" y1="${y(value).toFixed(1)}" y2="${y(value).toFixed(1)}" /><text x="${left - 6}" y="${(y(value) + 4).toFixed(1)}" text-anchor="end">${value}</text>`;
+  const path = index.map((point, at) => `${at ? "L" : "M"}${x(at).toFixed(1)} ${y(point.value).toFixed(1)}`).join("");
+  const area = `${path}L${x(index.length - 1).toFixed(1)} ${y(low).toFixed(1)}L${x(0).toFixed(1)} ${y(low).toFixed(1)}Z`;
+  const marks = index
+    .map((point, at) => {
+      const label =
+        point.month === 1 || at === 0
+          ? `<text x="${x(at).toFixed(1)}" y="${H - 6}" text-anchor="start">${point.year}</text>`
+          : "";
+      // a wide, unseen mark per month, so the month's number shows where the pointer is
+      return `${label}<rect class="hit" x="${(x(at) - plotW / index.length / 2).toFixed(1)}" y="${top}" width="${(plotW / index.length).toFixed(1)}" height="${plotH}"><title>${MONTHS[point.month - 1]} ${point.year}: ${point.value.toFixed(0)} (${percent(point.value / 100 - 1)} since first bought, ${point.products} products)</title></rect>`;
+    })
+    .join("");
+  const last = index.at(-1)!;
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Price index of the products you buy often">${grid}<path class="area" d="${area}" /><path class="line" d="${path}" /><circle class="dot" cx="${x(index.length - 1).toFixed(1)}" cy="${y(last.value).toFixed(1)}" r="4" />${marks}</svg>`;
+}
+
+/** One product's prices as a small stepped line: a price holds until the next one paid. */
+function sparkline(series: PriceSeries): string {
+  const [W, H, pad] = [280, 64, 5];
+  const times = series.points.map(([date]) => Date.parse(date));
+  const prices = series.points.map(([, price]) => price);
+  const [t0, t1] = [times[0]!, times.at(-1)!];
+  const [low, high] = [Math.min(...prices), Math.max(...prices)];
+  const x = (time: number) => pad + ((time - t0) / Math.max(1, t1 - t0)) * (W - 2 * pad);
+  const y = (price: number) => (high === low ? H / 2 : pad + (1 - (price - low) / (high - low)) * (H - 2 * pad));
+  let path = `M${x(t0).toFixed(1)} ${y(prices[0]!).toFixed(1)}`;
+  for (let at = 1; at < prices.length; at++)
+    path += `H${x(times[at]!).toFixed(1)}V${y(prices[at]!).toFixed(1)}`;
+  return `<svg class="chart spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${esc(series.name)}: from ${isk(series.first)} to ${isk(series.last)}"><title>${esc(series.name)}: ${isk(low)} at the lowest, ${isk(high)} at the highest, over ${series.purchases} purchases</title><path class="line" vector-effect="non-scaling-stroke" d="${path}" /></svg>`;
+}
+
+function priceCard(series: PriceSeries): string {
+  const way = direction(series.change);
+  return `<div class="price"><h3 title="${esc(series.name)}">${esc(series.name)}</h3><div class="was"><span>${isk(series.first)} → ${isk(series.last)}</span><span class="change ${way}">${percent(series.change)}</span></div>${sparkline(series)}<p class="meta">${series.points[0]![0].slice(0, 4)} to ${series.points.at(-1)![0].slice(0, 4)} · ${series.purchases} purchases</p></div>`;
+}
+
+/** The prices of what the person buys often: the index, then a small chart per product. */
+function priceSection(prices: PriceTrack): string {
+  if (prices.series.length < 3) return "";
+  const basket = prices.basketLast / prices.basketFirst - 1;
+  const dearer = prices.series.filter((one) => one.change > 0.005).length;
+  const shown = prices.series.slice(0, 12);
+  const more = prices.series.slice(12);
+  return `<section class="panel"><header><h2>Prices of what you buy often</h2><span class="meta">your ${prices.series.length} most bought products</span></header>
+    <p>One of each cost <b>${isk(prices.basketFirst)}</b> when you first bought them and <b>${isk(prices.basketLast)}</b> lately: <span class="change ${direction(basket)}">${percent(basket)}</span>. ${dearer} of ${prices.series.length} cost more now.</p>
+    <h3>Price index: each product's first price is 100</h3>
+    <div class="scroll">${indexChart(prices.index)}</div>
+    <div class="prices">${shown.map(priceCard).join("")}</div>
+    ${more.length ? `<details><summary>${more.length} more products</summary><div class="prices">${more.map(priceCard).join("")}</div></details>` : ""}
+    <p class="meta">Each line is the price of one, as you paid it, held until the next purchase. An offer shows as a dip, and a product sold by weight moves with what each one weighed. The two prices beside a name are the middle of your first three purchases and of your last three, so one offer does not pass for the price.</p></section>`;
+}
+
 /** The script of the dashboard: one step of a sync at a time, until Krónan has nothing new. It
  *  reloads the page once when orders were added, and never otherwise. */
 const SYNC_SCRIPT = `(() => {
@@ -146,6 +217,8 @@ export type DashboardView = {
   accounts: string[];
   account: string | null;
   summary: Summary | null;
+  /** How the regulars' prices moved; null where it is not shown (a single year). */
+  prices?: PriceTrack | null;
   checkedAt: string | null;
 };
 
@@ -240,6 +313,7 @@ export function serveDashboard(view: DashboardView): Response {
     <div class="tiles">${tiles}</div>
     <section class="panel"><header><h2>Spend per month</h2><span class="meta">${esc(scope)}</span></header><div class="scroll">${monthChart(summary)}</div></section>
     <section class="panel"><header><h2>Spend by category</h2><span class="meta">${summary.categories.length} categories · share of ${esc(scope)}</span></header>${categories}</section>
+    ${view.prices ? priceSection(view.prices) : ""}
     <div class="two">${years}${types}</div>
     <div class="two">
       <section class="panel"><header><h2>Most spent on</h2><span class="meta">top 15 products</span></header>${productTable(summary.products.slice(0, 15))}</section>

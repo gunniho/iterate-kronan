@@ -18,7 +18,9 @@ serves two pages for the mind's members:
 
 - **The dashboard**, at `/`: what the person has bought at Krónan, for all time or one year. What
   they spent, each month as a bar, the spend by category, by year and by way of shopping, and the
-  products they spent most on and bought most often. It reads the order history the package keeps
+  products they spent most on and bought most often. For all time it also shows how the prices
+  of what they buy most often have moved since their first order: an index of those products, and
+  a small chart of each one's price. It reads the order history the package keeps
   in the mind's own storage ([Your order history](#your-order-history)).
 - **The settings**, behind the icon in the dashboard's top-right corner, at `/settings`: the
   accounts as Krónan names them now, and a form that leads to the secret form for a new account.
@@ -290,8 +292,9 @@ const me = await identityOf(itx, "personal"); // { status: "ok", kind, name } | 
 ```
 
 `syncStep(itx, account)` is one step of fetching the order history (call it again while its
-`pending` is more than zero), and `summarize(await loadLedger(itx, account), year?)` is the
-dashboard's numbers. `kronanFetch(itx, account, path, { method?, body? })` adds the placeholder and refuses a path that
+`pending` is more than zero), `summarize(await loadLedger(itx, account), year?)` is the
+dashboard's numbers, and `priceHistory(ledger)` is every price paid for the products bought most
+often. None of the last two asks Krónan anything: a stored line holds the price that was paid. `kronanFetch(itx, account, path, { method?, body? })` adds the placeholder and refuses a path that
 leaves `/api/v1`. It answers Krónan's response as it came, and never retries. A run script cannot
 import a package: it uses `itx.fetch` as above.
 

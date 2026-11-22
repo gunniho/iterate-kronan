@@ -431,3 +431,110 @@ export function summarize(ledger: Ledger, year: number | null = null): Summary {
     types: [...types.values()].sort((a, b) => b.amount - a.amount),
   };
 }
+
+/** How one product's price moved: every price paid for one of it, oldest first. */
+export type PriceSeries = {
+  sku: string;
+  name: string;
+  category: string;
+  /** Orders it was bought in. */
+  purchases: number;
+  /** `[date, price of one]`, a day's last price when it was bought twice that day. */
+  points: [string, number][];
+  /** The price at first and lately: the middle one of the first three prices paid, and of the
+   *  last three, so that a single offer is not taken for the price. */
+  first: number;
+  last: number;
+  /** `last / first - 1`: 0.25 is a quarter dearer than at the first purchase. */
+  change: number;
+};
+
+/** The prices of what a person buys often, and an index of them over time. */
+export type PriceTrack = {
+  series: PriceSeries[];
+  /** One of each product: what that cost at each one's first purchase, and at its last. */
+  basketFirst: number;
+  basketLast: number;
+  /** Per month, the mean of each product's price over its first price, times 100, each product
+   *  counted from its first purchase and keeping its last price until the next. */
+  index: { year: number; month: number; value: number; products: number }[];
+};
+
+/** THE PRICES OF THE REGULARS: the `limit` products bought in the most orders, each at least
+ *  `minPurchases` times over at least half a year. A line's price of one is its amount over its
+ *  quantity, which is the unit price Krónan charged. A product with no category (a fee, a bag)
+ *  is no product to follow. Pure: it asks nothing. */
+export function priceHistory(
+  ledger: Ledger,
+  options: { limit?: number; minPurchases?: number } = {},
+): PriceTrack {
+  const { limit = 24, minPurchases = 6 } = options;
+  const byProduct = new Map<number, Map<string, number>>();
+  const orders = [...ledger.orders].filter((order) => /^\d{4}-\d{2}-\d{2}/.test(order.d));
+  orders.sort((a, b) => a.d.localeCompare(b.d));
+  for (const order of orders)
+    for (const [at, quantity, amount] of order.l) {
+      if (quantity <= 0 || amount <= 0 || !ledger.products[at]?.[2]) continue;
+      const days = byProduct.get(at) ?? new Map<string, number>();
+      days.set(order.d.slice(0, 10), Math.round(amount / quantity));
+      byProduct.set(at, days);
+    }
+  const series: PriceSeries[] = [];
+  for (const [at, days] of byProduct) {
+    const points = [...days.entries()];
+    if (points.length < minPurchases) continue;
+    const span = Date.parse(points.at(-1)![0]) - Date.parse(points[0]![0]);
+    if (!(span >= 182 * 24 * 60 * 60 * 1000)) continue;
+    const [sku, name, category] = ledger.products[at]!;
+    // the middle of three, so that one offer at either end is not taken for the price
+    const middle = (three: [string, number][]) => three.map(([, paid]) => paid).sort((a, b) => a - b)[1]!;
+    const [first, last] = [middle(points.slice(0, 3)), middle(points.slice(-3))];
+    series.push({
+      sku,
+      name,
+      category: category ?? "",
+      purchases: points.length,
+      points,
+      first,
+      last,
+      change: last / first - 1,
+    });
+  }
+  series.sort((a, b) => b.purchases - a.purchases || a.name.localeCompare(b.name));
+  series.length = Math.min(series.length, Math.max(0, limit));
+
+  const index: PriceTrack["index"] = [];
+  if (series.length) {
+    const monthOf = (date: string) => Number(date.slice(0, 4)) * 12 + Number(date.slice(5, 7)) - 1;
+    const from = Math.min(...series.map((one) => monthOf(one.points[0]![0])));
+    const to = Math.max(...series.map((one) => monthOf(one.points.at(-1)![0])));
+    for (let month = from; month <= to; month++) {
+      let sum = 0;
+      let products = 0;
+      for (const one of series) {
+        // the last price paid in or before this month
+        let price: number | null = null;
+        for (const [date, paid] of one.points) {
+          if (monthOf(date) > month) break;
+          price = paid;
+        }
+        if (price === null) continue;
+        sum += price / one.first;
+        products++;
+      }
+      if (products)
+        index.push({
+          year: Math.floor(month / 12),
+          month: (month % 12) + 1,
+          value: (sum / products) * 100,
+          products,
+        });
+    }
+  }
+  return {
+    series,
+    basketFirst: series.reduce((sum, one) => sum + one.first, 0),
+    basketLast: series.reduce((sum, one) => sum + one.last, 0),
+    index,
+  };
+}

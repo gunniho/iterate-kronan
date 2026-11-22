@@ -61,6 +61,16 @@ const STYLE = `
   tr:last-child td { border-bottom: 0; }
   th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; padding-right: 0; padding-left: .75rem; }
   td.name { width: 100%; overflow-wrap: anywhere; }
+  .chart .line { fill: none; stroke: var(--chart); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .chart .area { fill: var(--chart); opacity: .1; } .chart .dot { fill: var(--chart); } .chart .hit { fill: transparent; }
+  .chart .base { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 4; }
+  .prices { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr)); gap: .75rem; margin-top: 1rem; }
+  .price { border: 1px solid var(--border); border-radius: .6rem; padding: .7rem .8rem .5rem; min-width: 0; }
+  .price h3 { color: var(--fg); font-weight: 500; font-size: .9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .price .was { display: flex; justify-content: space-between; align-items: baseline; gap: .5rem; font-size: .82rem; color: var(--muted); font-variant-numeric: tabular-nums; margin: .15rem 0 .35rem; }
+  .price .spark { display: block; width: 100%; height: 3.4rem; overflow: visible; }
+  .up { color: var(--bad); } .down { color: var(--ok); } .flat { color: var(--muted); }
+  .change { font-weight: 600; font-variant-numeric: tabular-nums; }
   .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); gap: 1rem; margin: 1rem 0; align-items: start; }
   .two .panel { margin: 0; }
   .sync { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; }

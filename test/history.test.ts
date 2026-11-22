@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { FRESH_MS, KronanError } from "../dist/history.js";
 import { isk } from "../dist/dashboard.js";
-import { kronan, ledgerKey, loadLedger, orderKey, summarize, syncStep } from "../dist/kronan.js";
+import { kronan, ledgerKey, loadLedger, orderKey, priceHistory, summarize, syncStep } from "../dist/kronan.js";
 import { fakeKronan, fakeKv } from "./fake-kronan.ts";
 
 const NOW = Date.parse("2026-11-22T12:00:00Z");
@@ -240,4 +240,56 @@ test("with two accounts the page offers both and keeps their histories apart", a
   assert.match(family, /href="\?account=family" aria-current="page">family</);
   assert.match(family, /Fetching your order history/);
   assert.match(await (await serve("/?account=personal")).text(), /Spend per month/);
+});
+
+test("price tracking follows the products bought most often, from what each stored line cost", async () => {
+  const { shop, itx, all, counts } = mind({ orders: 60 });
+  await all();
+  const asked = counts();
+  const ledger = await loadLedger(itx, "personal");
+  const track = priceHistory(ledger, { limit: 10 });
+  assert.deepEqual(counts(), asked); // it asks Krónan nothing
+  assert.equal(track.series.length, 10);
+  // most bought first, and no product without a category
+  assert.deepEqual(track.series.map((one) => one.purchases), [...track.series.map((one) => one.purchases)].sort((a, b) => b - a));
+  assert.ok(track.series.every((one) => one.category && one.sku !== shop.products[0]!.sku));
+  for (const one of track.series) {
+    // every point is a unit price Krónan charged that day, oldest first
+    const paid = shop.list.flatMap((order) => order.lines.filter((line) => line.sku === one.sku && line.quantity > 0).map((line) => [order.created.slice(0, 10), line.unitPrice]));
+    for (const [date, price] of one.points) assert.ok(paid.some(([d, p]) => d === date && p === price), `${one.name} ${date}`);
+    assert.deepEqual(one.points.map(([date]) => date), [...one.points.map(([date]) => date)].sort());
+    // the middle of the first three prices and of the last three: an offer at an end is passed over
+    const middle = (three: [string, number][]) => three.map(([, paid]) => paid).sort((a, b) => a - b)[1];
+    assert.equal(one.first, middle(one.points.slice(0, 3)));
+    assert.equal(one.last, middle(one.points.slice(-3)));
+    assert.ok(Math.abs(one.change - (one.last / one.first - 1)) < 1e-9);
+    assert.ok(one.purchases >= 6);
+  }
+  assert.equal(track.basketFirst, track.series.reduce((sum, one) => sum + one.first, 0));
+  // the index starts at 100 with the first purchases and has every month to the last
+  assert.ok(Math.abs(track.index[0]!.value - 100) < 12);
+  assert.equal(track.index.length, 59);
+  assert.equal(track.index.at(-1)!.products, 10);
+  // prices in the made-up shop creep up: the index ends above where it began
+  assert.ok(track.index.at(-1)!.value > 115 && track.index.at(-1)!.value < 160);
+});
+
+test("a product bought a few times, or only within half a year, has no price history", async () => {
+  const few = mind({ orders: 5 });
+  await few.all();
+  assert.deepEqual(priceHistory(await loadLedger(few.itx, "personal")), { series: [], basketFirst: 0, basketLast: 0, index: [] });
+  const brief = mind({ orders: 40, from: "2026-07-01", to: "2026-11-10" });
+  await brief.all();
+  assert.equal(priceHistory(await loadLedger(brief.itx, "personal")).series.length, 0);
+});
+
+test("the dashboard shows the prices for all time, and not within one year", async () => {
+  const { serve, all } = hosted(["/secrets/kronan-personal"], { orders: 60 });
+  await all();
+  const page = await (await serve("/")).text();
+  assert.match(page, /Prices of what you buy often/);
+  assert.match(page, /aria-label="Price index of the products you buy often"/);
+  assert.equal(page.match(/<div class="price">/g)!.length, 24);
+  assert.match(page, /<summary>12 more products<\/summary>/);
+  assert.doesNotMatch(await (await serve("/?year=2025")).text(), /Prices of what you buy often/);
 });

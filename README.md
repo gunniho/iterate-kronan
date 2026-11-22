@@ -39,15 +39,16 @@ const MEMBER = "";
 const FILES = {};
 ```
 
-That script asks pkg.pr.new for the newest build under `jonastemplestein/iterategrations`; this
-package's builds are under `gunniho/iterate-kronan`, so pin it yourself: take the full sha of this
-repository's `main` (`https://api.github.com/repos/gunniho/iterate-kronan/commits/main`) and use
+That script looks for the build under `jonastemplestein/iterategrations`. This package's builds
+are under `gunniho/iterate-kronan`: before you run it, replace both
+`pkg.pr.new/jonastemplestein/iterategrations/` in the script with
+`pkg.pr.new/gunniho/iterate-kronan/`. It then pins the newest `main` build at its full commit:
 
 ```text
 "iterate-kronan": "https://pkg.pr.new/gunniho/iterate-kronan/iterate-kronan@<full sha>"
 ```
 
-as the dependency in `package.json`. By hand it is that line, the import, and `kronan()` in
+By hand it is that dependency in `package.json`, the import, and `kronan()` in
 `const integrations: Integration[] = [...]` of `worker.ts`, in one commit.
 
 Check it is live: the card is there, with no status and **Connect** first.

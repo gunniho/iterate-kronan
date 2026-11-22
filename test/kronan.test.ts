@@ -13,6 +13,7 @@ import {
   purchaseRule,
   secretOf,
 } from "../dist/kronan.js";
+import { fakeKv } from "./fake-kronan.ts";
 
 const CONFIGURED = "events.iterate.com/integration/configured";
 const ROW = "events.iterate.com/integration/connection-configured";
@@ -43,6 +44,7 @@ function fakeMind(
       },
     },
     integrations: { list: async () => ({ connections: options.connections ?? {} }) },
+    kv: fakeKv().kv,
     ...(options.zone !== null && { url: async () => `https://${options.zone ?? "mind.example"}/` }),
     fetch: async (request: Request) => {
       requests.push(request);
@@ -88,13 +90,18 @@ const connectForm = (account: string, headers: Record<string, string> = {}) =>
 test("every path asks for a member first, and opens no scope for anyone else", async () => {
   const mind = fakeMind();
   assert.equal(mind.integration.routingSlug, "kronan");
-  for (const request of [new Request(`${ORIGIN}/`), connectForm("personal")])
+  for (const request of [
+    new Request(`${ORIGIN}/`),
+    new Request(`${ORIGIN}/settings`),
+    new Request(`${ORIGIN}/sync?account=personal`, { method: "POST" }),
+    connectForm("personal"),
+  ])
     assert.equal((await mind.serve(request)).status, 401);
   assert.deepEqual(mind.scopes, { opened: 0, disposed: 0 });
   assert.deepEqual(mind.collected, []);
 });
 
-test("the page lists each account as Krónan names it, shows no token, and may not be framed", async () => {
+test("the settings list each account as Krónan names it, show no token, and may not be framed", async () => {
   const mind = fakeMind(
     {
       "/secrets/kronan-personal": { urls: PIN },
@@ -109,10 +116,11 @@ test("the page lists each account as Krónan names it, shows no token, and may n
     },
     { member: true },
   );
-  const response = await mind.serve(new Request(`${ORIGIN}/`));
+  const response = await mind.serve(new Request(`${ORIGIN}/settings`));
   assert.equal(response.status, 200);
   const text = await response.text();
   assert.match(text, /<b>personal<\/b> <span class="ok">Ada<\/span>/);
+  assert.match(text, /href="\.\/" aria-label="Back to your purchases"/);
   assert.match(text, /&lt;Heimilið&gt;<\/span> <span class="muted">customer group/);
   assert.match(text, /<b>old<\/b> <span class="bad">Krónan refuses the token/);
   assert.match(text, /<b>wide<\/b>[^]*?other addresses than api\.kronan\.is/);

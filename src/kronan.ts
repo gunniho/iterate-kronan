@@ -2,135 +2,48 @@
 // with Krónan. A person makes an access token in Krónan's own settings and saves it into a secret
 // pinned to api.kronan.is; the mind's code and agents spend it as a placeholder and never see it.
 
-import { serveContinue, servePage } from "./page.js";
+import {
+  API_ORIGIN,
+  SECRETS,
+  identityOf,
+  isAccountName,
+  type Identity,
+  type KronanFetchItx,
+} from "./api.js";
+import { serveDashboard } from "./dashboard.js";
+import { readLedger, summarize, syncStep, type HistoryItx } from "./history.js";
+import { serveContinue, serveSettings } from "./page.js";
 
-/** The one origin a Krónan secret may go to. */
-export const API_ORIGIN = "https://api.kronan.is";
-/** The API's base: every path of the OpenAPI schema is under it. */
-export const API_BASE = `${API_ORIGIN}/api/v1`;
-
-/** An account's name in a secret path and on the Integrations page: `personal`, `family`. */
-const ACCOUNT_NAME = /^[a-z0-9][a-z0-9-]{0,39}$/;
-/** Each account's access token is the secret at this and the account's name. */
-const SECRETS = "/secrets/kronan-";
-
-/** Whether `name` can name an account. */
-export const isAccountName = (name: string): boolean => ACCOUNT_NAME.test(name);
-
-/** The secret that holds an account's access token: `/secrets/kronan-<account>`. */
-export function secretOf(account: string): string {
-  if (!isAccountName(account))
-    throw new Error(
-      `kronan: "${account}" is no account name (lower-case letters, digits and hyphens, at most 40)`,
-    );
-  return SECRETS + account;
-}
-
-/** The Authorization header of a request as an account: a placeholder, which the mind's egress
- *  fills in on the way out, toward api.kronan.is alone. */
-export const authorizationOf = (account: string): string =>
-  `AccessToken getSecret("${secretOf(account)}")`;
-
-/** The POSTs that spend nothing and book nothing, by path: searches, the shopping note, lists,
- *  recipes, meal plans, and the lines of the checkout (the basket). A request under one of these
- *  never waits for a member. */
-export const FREE_PATHS: readonly string[] = [
-  "/api/v1/products/",
-  "/api/v1/recipes/",
-  "/api/v1/user-recipes/",
-  "/api/v1/shopping-notes/",
-  "/api/v1/product-lists/",
-  "/api/v1/meal-plans/",
-  "/api/v1/checkout/lines/",
-  "/api/v1/checkout/preview-lines/",
-];
-
-/** The rule that makes an account's purchases wait for a member's passkey, for
- *  `itx.approvals.propose`: every POST to api.kronan.is with the account's secret waits, except
- *  under `FREE_PATHS`. What waits: completing a checkout, adding a checkout to an order, a
- *  delivery or pickup slot (listing them too, which shares a path with reserving one), and a
- *  change to an order. */
-export const purchaseRule = (
-  account: string,
-): { secret: string; methods: string[]; hosts: string[]; freePaths: string[] } => ({
-  secret: secretOf(account),
-  methods: ["POST"],
-  hosts: [new URL(API_ORIGIN).hostname],
-  freePaths: [...FREE_PATHS],
-});
-
-/** What sends a request with placeholders: a mind's `itx`. */
-export type KronanFetchItx = { fetch(request: Request): Promise<Response> };
-
-/** One request to Krónan's API as an account, for the mind's own code:
- *  `await kronanFetch(itx, "personal", "/products/search/", { method: "POST", body: JSON.stringify({ query: "mjólk" }) })`.
- *  `path` is under `/api/v1`. It answers Krónan's response as it came: the caller reads the
- *  status. It never retries: a write that timed out may have happened. */
-export function kronanFetch(
-  itx: KronanFetchItx,
-  account: string,
-  path: string,
-  init: { method?: string; body?: string } = {},
-): Promise<Response> {
-  if (!path.startsWith("/") || path.startsWith("//"))
-    throw new Error(`kronan: "${path}" is no path under /api/v1 (it starts with one "/")`);
-  const url = new URL(API_BASE + path);
-  if (url.origin !== API_ORIGIN || !url.pathname.startsWith("/api/v1/"))
-    throw new Error(`kronan: "${path}" leaves ${API_BASE}`);
-  return itx.fetch(
-    new Request(url, {
-      method: init.method ?? "GET",
-      headers: {
-        accept: "application/json",
-        authorization: authorizationOf(account),
-        ...(init.body !== undefined && { "content-type": "application/json" }),
-      },
-      ...(init.body !== undefined && { body: init.body }),
-    }),
-  );
-}
-
-/** What Krónan says of a token (`GET /me/`): whose it is, that Krónan refuses it (expired,
- *  revoked), or nothing, when Krónan could not be asked. */
-export type Identity =
-  | { status: "ok"; kind: "user" | "customer_group"; name: string }
-  | { status: "refused"; http: number }
-  | { status: "unknown" };
-
-/** Asks Krónan whose token an account's secret holds, for at most `timeoutMs`. It never throws.
- *  The wait is a race, not an AbortSignal: a signal does not cross to the mind's `itx.fetch`. */
-export async function identityOf(
-  itx: KronanFetchItx,
-  account: string,
-  timeoutMs: number = 8000,
-): Promise<Identity> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    const response = await Promise.race([
-      kronanFetch(itx, account, "/me/"),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error("timeout")), timeoutMs);
-      }),
-    ]);
-    if (response.status === 401 || response.status === 403)
-      return { status: "refused", http: response.status };
-    if (!response.ok) return { status: "unknown" };
-    const me = (await response.json()) as { type?: unknown; name?: unknown } | null;
-    if (typeof me?.name !== "string" || !me.name) return { status: "unknown" };
-    return {
-      status: "ok",
-      kind: me.type === "customer_group" ? "customer_group" : "user",
-      name: me.name.slice(0, 100),
-    };
-  } catch {
-    return { status: "unknown" };
-  } finally {
-    if (timer !== undefined) clearTimeout(timer);
-  }
-}
+export {
+  API_BASE,
+  API_ORIGIN,
+  FREE_PATHS,
+  authorizationOf,
+  identityOf,
+  isAccountName,
+  kronanFetch,
+  purchaseRule,
+  secretOf,
+  type Identity,
+  type KronanFetchItx,
+} from "./api.js";
+export {
+  ledgerKey,
+  loadLedger,
+  orderKey,
+  summarize,
+  syncStep,
+  type HistoryItx,
+  type Ledger,
+  type StoredOrder,
+  type Summary,
+  type SyncResult,
+} from "./history.js";
 
 /** The mind, as this package uses it: what a config worker's `itx` already has. */
 export type KronanItx = KronanFetchItx & {
+  /** The mind's own key-value store: where each account's order history is kept. */
+  kv: HistoryItx["kv"];
   /** A public URL of the mind's own code: with no argument, its first zone's. The hook reads the
    *  zone from it to say where the package's page is. Optional, so a mind without it still
    *  registers the card, with no button to the page. */
@@ -303,12 +216,27 @@ async function connect(request: Request, itx: KronanItx): Promise<Response> {
   return serveContinue(TITLE, name, collect);
 }
 
+/** One step of fetching an account's order history, for the dashboard's script: the answer is
+ *  the step's `SyncResult` as JSON. Only an account whose secret exists is synced. */
+async function sync(request: Request, itx: KronanItx): Promise<Response> {
+  if (request.headers.get("sec-fetch-site") === "cross-site")
+    return new Response("Not from another site\n", { status: 403 });
+  const url = new URL(request.url);
+  const account = url.searchParams.get("account") ?? "";
+  if (!(await accountsOf(itx)).some(({ name }) => name === account))
+    return new Response("No such account\n", { status: 404 });
+  const result = await syncStep(itx, account, { force: url.searchParams.get("force") === "1" });
+  return Response.json(result, { headers: { "cache-control": "private, no-store" } });
+}
+
 /** Krónan's public API in a mind, as an integration its worker hosts:
  *  `const integrations: Integration[] = [kronan()];`
  *
  *  On its host (`kronan.<the mind's zone>`, or the `origin` the worker mounts it at) it answers,
- *  for members only, its page at `/` (the accounts, as Krónan names them now) and the form at
- *  `/connect`, which leads to the collection page for a new account's token. Its install hook (`mind/worker-updated`, and a Krónan secret set or
+ *  for members only: at `/` a dashboard of the person's purchases, from the order history it
+ *  keeps in the mind's own storage (`/sync` fetches what is new, each order once); at `/settings`
+ *  the accounts, as Krónan names them now; and the form at `/connect`, which leads to the
+ *  collection page for a new account's token. Its install hook (`mind/worker-updated`, and a Krónan secret set or
  *  deleted) lists it on the Dash's Integrations page: the card, and a row per account whose secret
  *  exists. An account's row goes when its secret does. */
 export function kronan(options: { origin?: string } = {}): Integration {
@@ -317,21 +245,43 @@ export function kronan(options: { origin?: string } = {}): Integration {
     async fetch(request, host) {
       const denied = host.auth.require(request);
       if (denied) return denied;
-      const { pathname } = new URL(request.url);
-      if (request.method === "POST" && pathname === "/connect") {
+      const url = new URL(request.url);
+      const { pathname } = url;
+      const route = `${request.method} ${pathname}`;
+      if (route === "POST /connect") {
         using itx = host.getItx();
         return await connect(request, itx);
       }
-      if (request.method !== "GET" || pathname !== "/")
-        return new Response("Not found\n", { status: 404 });
+      if (route === "POST /sync") {
+        using itx = host.getItx();
+        return await sync(request, itx);
+      }
+      if (route === "GET /settings") {
+        using itx = host.getItx();
+        return serveSettings({
+          title: TITLE,
+          description: DESCRIPTION,
+          recipe: RECIPE,
+          tokenSettings: TOKEN_SETTINGS,
+          secrets: SECRETS,
+          accounts: await viewsOf(itx),
+        });
+      }
+      if (route !== "GET /") return new Response("Not found\n", { status: 404 });
       using itx = host.getItx();
-      return servePage({
+      const accounts = (await accountsOf(itx)).map((account) => account.name);
+      const asked = url.searchParams.get("account");
+      const account = accounts.includes(asked ?? "") ? asked : (accounts[0] ?? null);
+      const year = /^\d{4}$/.test(url.searchParams.get("year") ?? "")
+        ? Number(url.searchParams.get("year"))
+        : null;
+      const ledger = account ? await readLedger(itx, account) : null;
+      return serveDashboard({
         title: TITLE,
-        description: DESCRIPTION,
-        recipe: RECIPE,
-        tokenSettings: TOKEN_SETTINGS,
-        secrets: SECRETS,
-        accounts: await viewsOf(itx),
+        accounts,
+        account,
+        summary: ledger ? summarize(ledger, year) : null,
+        checkedAt: ledger?.checkedAt ?? null,
       });
     },
     async processEvent({ event, itx }) {

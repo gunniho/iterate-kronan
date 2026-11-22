@@ -14,12 +14,20 @@ Every request carries a placeholder, and the mind's egress puts the token in on 
 
 It is the package `iterate-kronan`, of the archetype "an API key, and a page that shows its
 status". `kronan()` is one element in the `integrations` array of the mind's config worker. It
-serves a page for the mind's members: the accounts as Krónan names them now, and a form that
-leads to the secret form for a new account. The mind's Integrations page in the Dash shows a
-Krónan card under "This mind's own": no status and a **Connect** button until an account's secret
-exists, then "Connected" (or "2 accounts") with **Add account**. Under it is a row per account, by
-the name Krónan gives it, with a green dot. A row says so when Krónan refuses its token (expired
-or revoked), and it goes when its secret is deleted.
+serves two pages for the mind's members:
+
+- **The dashboard**, at `/`: what the person has bought at Krónan, for all time or one year. What
+  they spent, each month as a bar, the spend by category, by year and by way of shopping, and the
+  products they spent most on and bought most often. It reads the order history the package keeps
+  in the mind's own storage ([Your order history](#your-order-history)).
+- **The settings**, behind the icon in the dashboard's top-right corner, at `/settings`: the
+  accounts as Krónan names them now, and a form that leads to the secret form for a new account.
+
+The mind's Integrations page in the Dash shows a Krónan card under "This mind's own": no status
+and a **Connect** button until an account's secret exists, then "Connected" (or "2 accounts") with
+**Add account**. Under it is a row per account, by the name Krónan gives it, with a green dot. A
+row says so when Krónan refuses its token (expired or revoked), and it goes when its secret is
+deleted.
 
 You are a coding agent with iterate's MCP server (`run({ script })`, `async (itx) => …` at the
 mind's root; never take a token in chat). Follow the steps in order.
@@ -35,7 +43,7 @@ worker.ts      import { kronan } from "iterate-kronan";
 worker.ts      const integrations: Integration[] = [kronan()];
 ```
 
-The package's page is for members, at `https://kronan.<the mind's zone>/`: the card's buttons
+The package's pages are for members, at `https://kronan.<the mind's zone>/`: the card's buttons
 lead there. A worker that routes by hostname itself mounts the element's `fetch` on that host,
 behind its member check. To serve it elsewhere, say where: `kronan({ origin: "https://shop.example" })`.
 
@@ -220,6 +228,58 @@ To place an order, the member must have asked for that order in their own words.
 basket, the total, the slot and the address first. Then `POST /checkout/complete/` with
 `{ slotId, addressId }`, which waits for their passkey under the rule of step 3.
 
+## Your order history
+
+The dashboard needs the token's "view purchase history" permission. When a member opens it, the
+page asks the package for what is new, a few orders at a time, until Krónan has no more:
+
+- It reads Krónan's order list (50 to a request, newest first) until a page holds nothing new, at
+  most once in ten minutes.
+- It fetches each finished order **once**, and never again. An order that can still change is
+  left until it cannot; a canceled one is never fetched.
+- It names each product's top-level category from the products Krónan sells now (100 to a
+  request), and for what it no longer sells from the list of everything the account bought, read
+  at most once a week.
+
+A first run for 170 orders is about 180 requests, under Krónan's limit of 200 in 200 seconds;
+when Krónan answers 429 the page waits and goes on. After that, opening the dashboard costs one
+request, or none.
+
+The history is the person's own, and it is kept in the mind's own storage (`itx.kv`), never in
+this package or anywhere else:
+
+```text
+kronan/<account>/order/<token>   one finished order: date, type, total, and its lines
+                                 [sku, name, quantity, unitPrice, total]
+kronan/<account>/ledger          every stored order folded into one document, which the
+                                 dashboard reads; made again from the order keys when it is lost
+```
+
+An agent that wants a person's purchases reads them there and asks Krónan nothing:
+
+```js
+async (itx) => {
+  const ledger = JSON.parse(await itx.kv.get("kronan/personal/ledger"));
+  // products: [sku, name, category]; an order's lines: [index into products, quantity, amount]
+  return {
+    orders: ledger.orders.length,
+    spent: ledger.orders.reduce((sum, order) => sum + order.total, 0),
+    newest: ledger.orders.map((order) => order.d).sort().at(-1),
+  };
+};
+```
+
+It is a private record: show it to the mind's members, and put none of it on a public page. To
+forget it, delete the keys:
+
+```js
+async (itx) => {
+  const { keys } = await itx.kv.list("kronan/personal/");
+  for (const key of keys) await itx.kv.delete(key);
+  return keys.length;
+};
+```
+
 ## For the mind's own code
 
 ```ts
@@ -229,7 +289,9 @@ const response = await kronanFetch(itx, "personal", "/checkout/");
 const me = await identityOf(itx, "personal"); // { status: "ok", kind, name } | "refused" | "unknown"
 ```
 
-`kronanFetch(itx, account, path, { method?, body? })` adds the placeholder and refuses a path that
+`syncStep(itx, account)` is one step of fetching the order history (call it again while its
+`pending` is more than zero), and `summarize(await loadLedger(itx, account), year?)` is the
+dashboard's numbers. `kronanFetch(itx, account, path, { method?, body? })` adds the placeholder and refuses a path that
 leaves `/api/v1`. It answers Krónan's response as it came, and never retries. A run script cannot
 import a package: it uses `itx.fetch` as above.
 
@@ -237,14 +299,16 @@ import a package: it uses `itx.fetch` as above.
 
 The package appends only to `/integrations` (its card `kronan`, and a row `kronan/<account>` per
 account), on a publish of the config repo and when a `/secrets/kronan-<account>` is set or
-deleted. It keeps nothing in kv, takes no webhook, and has no schedule.
+deleted. In kv it keeps each account's order history under `kronan/<account>/`, written only
+while a member has the dashboard open. It takes no webhook and has no schedule.
 
 Krónan has no webhook either. A token that ends between two publishes shows on its row at the
 next publish, and at once on the package's page, which asks Krónan each time it is opened.
 
 ## Removing it
 
-One account: delete its secret, and its row goes.
+One account: delete its secret, and its row goes. Its order history stays until you delete the
+keys under `kronan/<account>/` ([Your order history](#your-order-history)).
 
 ```js
 async (itx) => itx.secrets.delete("/secrets/kronan-personal");

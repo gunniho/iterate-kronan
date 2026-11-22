@@ -1,7 +1,7 @@
 {
   "name": "iterate-kronan",
-  "version": "0.1.2",
-  "description": "Krónan's public grocery API (Iceland) for an iterate mind: a setup page, a card on the Integrations page, and a recipe for agents",
+  "version": "0.2.0",
+  "description": "Krónan's public grocery API (Iceland) for an iterate mind: a dashboard of your purchases, a settings page, a card on the Integrations page, and a recipe for agents",
   "keywords": ["iterate", "kronan", "iceland", "groceries"],
   "license": "MIT",
   "author": "Gunnar Holmsteinn",

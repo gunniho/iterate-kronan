@@ -35,6 +35,10 @@ worker.ts      import { kronan } from "iterate-kronan";
 worker.ts      const integrations: Integration[] = [kronan()];
 ```
 
+The package's page is for members, at `https://kronan.<the mind's zone>/`: the card's buttons
+lead there. A worker that routes by hostname itself mounts the element's `fetch` on that host,
+behind its member check. To serve it elsewhere, say where: `kronan({ origin: "https://shop.example" })`.
+
 Pin an exact version (`npm view iterate-kronan version`), never a range. Keep what the array
 already lists. The script of
 [add-to-a-mind.md](https://github.com/jonastemplestein/iterategrations/blob/main/add-to-a-mind.md)

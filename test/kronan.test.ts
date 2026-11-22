@@ -23,7 +23,12 @@ type Me = { status: number; body?: unknown } | "down";
 
 function fakeMind(
   secrets: Record<string, { urls?: string[]; me?: Me }> = {},
-  options: { member?: boolean; connections?: Record<string, unknown> } = {},
+  options: {
+    member?: boolean;
+    connections?: Record<string, unknown>;
+    zone?: string | null;
+    origin?: string;
+  } = {},
 ) {
   const appended: { path: string; event: any }[] = [];
   const requests: Request[] = [];
@@ -38,6 +43,7 @@ function fakeMind(
       },
     },
     integrations: { list: async () => ({ connections: options.connections ?? {} }) },
+    ...(options.zone !== null && { url: async () => `https://${options.zone ?? "mind.example"}/` }),
     fetch: async (request: Request) => {
       requests.push(request);
       const path = /getSecret\("([^"]+)"\)/.exec(request.headers.get("authorization") ?? "")?.[1];
@@ -56,7 +62,7 @@ function fakeMind(
       },
     }),
   };
-  const integration = kronan();
+  const integration = kronan(options.origin ? { origin: options.origin } : {});
   const host = {
     getItx: () => {
       scopes.opened++;
@@ -170,7 +176,7 @@ test("before any account the card has no status and Connect first", async () => 
           description: mind.registry()[0].payload.card.description,
           icon: "https://www.google.com/s2/favicons?domain=kronan.is&sz=64",
           actions: [
-            { label: "Connect", routingSlug: "kronan", path: "/" },
+            { label: "Connect", url: "https://kronan.mind.example/" },
             { label: "Recipe", url: "https://github.com/gunniho/iterate-kronan#readme" },
           ],
         },
@@ -195,7 +201,7 @@ test("a publish registers the card and a row per account, with words only where 
   const [card, ...rows] = mind.registry();
   assert.deepEqual(card.payload.card.status, { kind: "ok", text: "5 accounts" });
   assert.equal(card.payload.card.actions[0].label, "Add account");
-  const manage = [{ label: "Manage", routingSlug: "kronan", path: "/" }];
+  const manage = [{ label: "Manage", url: "https://kronan.mind.example/" }];
   assert.deepEqual(
     rows.map((row) => [row.type, row.idempotencyKey, row.payload.connection, row.payload.row]),
     [
@@ -295,4 +301,24 @@ test("the purchase rule holds every POST but the free paths, in the shape the pl
 test("the README's rule is the package's", () => {
   const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
   for (const path of FREE_PATHS) assert.ok(readme.includes(`"${path}"`), path);
+});
+
+test("every button is an absolute https URL: the origin the worker names, else kronan.<zone>, else none", async () => {
+  const actions = async (options: Parameters<typeof fakeMind>[1]) => {
+    const mind = fakeMind({ "/secrets/kronan-personal": { urls: PIN } }, options);
+    await mind.publish(1);
+    const [card, row] = mind.registry();
+    return [card.payload.card.actions, row.payload.row.actions].flat();
+  };
+  for (const options of [{}, { origin: "https://shop.mind.example" }, { zone: null }, { origin: "http://insecure.example" }, { origin: "not a url" }])
+    for (const action of await actions(options)) {
+      assert.deepEqual(Object.keys(action), ["label", "url"]);
+      assert.equal(new URL(action.url).protocol, "https:");
+    }
+  assert.deepEqual((await actions({ origin: "https://shop.mind.example/x" })).map((a) => a.url), [
+    "https://shop.mind.example/",
+    "https://github.com/gunniho/iterate-kronan#readme",
+    "https://shop.mind.example/",
+  ]);
+  assert.deepEqual((await actions({ zone: null })).map((a) => a.label), ["Recipe"]);
 });

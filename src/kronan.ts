@@ -119,6 +119,10 @@ export async function identityOf(itx: KronanFetchItx, account: string): Promise<
 
 /** The mind, as this package uses it: what a config worker's `itx` already has. */
 export type KronanItx = KronanFetchItx & {
+  /** A public URL of the mind's own code: with no argument, its first zone's. The hook reads the
+   *  zone from it to say where the package's page is. Optional, so a mind without it still
+   *  registers the card, with no button to the page. */
+  url?(): Promise<string>;
   secrets: {
     list(): Promise<{ path: string; urls?: string[] }[]>;
     collectFromUser(input: {
@@ -205,7 +209,7 @@ const viewsOf = async (itx: KronanItx): Promise<AccountView[]> =>
 
 /** The card on the Dash's Integrations page (iterate/integrations): no status and "Connect" first
  *  until an account's secret exists, then the number of accounts. */
-const cardOf = (accounts: number) => ({
+const cardOf = (accounts: number, page: string | null) => ({
   title: TITLE,
   description: DESCRIPTION,
   icon: "https://www.google.com/s2/favicons?domain=kronan.is&sz=64",
@@ -213,13 +217,13 @@ const cardOf = (accounts: number) => ({
     status: { kind: "ok", text: accounts === 1 ? "Connected" : `${accounts} accounts` },
   }),
   actions: [
-    { label: accounts > 0 ? "Add account" : "Connect", routingSlug: SLUG, path: "/" },
+    ...(page ? [{ label: accounts > 0 ? "Add account" : "Connect", url: page }] : []),
     { label: "Recipe", url: RECIPE },
   ],
 });
 
 /** An account's row: whose token it is, by Krónan's word. Words only for what a person must do. */
-const rowOf = ({ name, pinned, identity }: AccountView) => ({
+const rowOf = ({ name, pinned, identity }: AccountView, page: string | null) => ({
   account: identity.status === "ok" ? identity.name : name,
   status: !pinned
     ? {
@@ -232,7 +236,7 @@ const rowOf = ({ name, pinned, identity }: AccountView) => ({
           text: "Krónan refuses the token (expired or revoked). Make a new one and connect again.",
         }
       : { kind: "ok" },
-  actions: [{ label: "Manage", routingSlug: SLUG, path: "/" }],
+  actions: page ? [{ label: "Manage", url: page }] : [],
   ...(identity.status === "ok" && {
     details: {
       Connection: name,
@@ -240,6 +244,19 @@ const rowOf = ({ name, pinned, identity }: AccountView) => ({
     },
   }),
 });
+
+/** Where the package's page is, as a button's absolute URL: the origin the worker mounts it at
+ *  (`kronan({ origin })`), else the label `kronan` in the mind's first zone. Null when the mind
+ *  cannot say its zone. It never throws. */
+async function pageOf(itx: KronanItx, origin: string | undefined): Promise<string | null> {
+  try {
+    const base = origin ?? `https://${SLUG}.${new URL(await itx.url!()).hostname}`;
+    const url = new URL("/", base);
+    return url.protocol === "https:" ? url.href : null;
+  } catch {
+    return null;
+  }
+}
 
 /** The platform retries an event, so a card keyed by it may have landed already, perhaps with what
  *  was true then (`IDEMPOTENCY_CONFLICT`): that is not an error, and the next publish registers the
@@ -277,12 +294,12 @@ async function connect(request: Request, itx: KronanItx): Promise<Response> {
 /** Krónan's public API in a mind, as an integration its worker hosts:
  *  `const integrations: Integration[] = [kronan()];`
  *
- *  On the `kronan` routing slug it answers, for members only, its page at `/` (the accounts, as
- *  Krónan names them now) and the form at `/connect`, which leads to the collection page for a
- *  new account's token. Its install hook (`mind/worker-updated`, and a Krónan secret set or
+ *  On its host (`kronan.<the mind's zone>`, or the `origin` the worker mounts it at) it answers,
+ *  for members only, its page at `/` (the accounts, as Krónan names them now) and the form at
+ *  `/connect`, which leads to the collection page for a new account's token. Its install hook (`mind/worker-updated`, and a Krónan secret set or
  *  deleted) lists it on the Dash's Integrations page: the card, and a row per account whose secret
  *  exists. An account's row goes when its secret does. */
-export function kronan(): Integration {
+export function kronan(options: { origin?: string } = {}): Integration {
   return {
     routingSlug: SLUG,
     async fetch(request, host) {
@@ -315,13 +332,13 @@ export function kronan(): Integration {
         isAccountName(event.path.slice(SECRETS.length));
       if (event.type !== WORKER_UPDATED && !fact) return;
       const at = `${event.path}@${event.offset}`;
-      const accounts = await viewsOf(itx);
+      const [accounts, page] = await Promise.all([viewsOf(itx), pageOf(itx, options.origin)]);
       const registry = itx.cd("/integrations");
       await once(
         registry.append({
           type: "events.iterate.com/integration/configured",
           idempotencyKey: `kronan:registry:${at}`,
-          payload: { integration: SLUG, card: cardOf(accounts.length) },
+          payload: { integration: SLUG, card: cardOf(accounts.length, page) },
         }),
       );
       for (const account of accounts)
@@ -329,7 +346,7 @@ export function kronan(): Integration {
           registry.append({
             type: "events.iterate.com/integration/connection-configured",
             idempotencyKey: `kronan:registry:${account.name}:${at}`,
-            payload: { integration: SLUG, connection: account.name, row: rowOf(account) },
+            payload: { integration: SLUG, connection: account.name, row: rowOf(account, page) },
           }),
         );
       // and a null for each row of an account whose secret is gone

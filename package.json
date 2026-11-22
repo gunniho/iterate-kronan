@@ -1,0 +1,28 @@
+{
+  "name": "iterate-kronan",
+  "version": "0.0.0",
+  "description": "Krónan's public grocery API (Iceland) for an iterate mind: a setup page, a card on the Integrations page, and a recipe for agents",
+  "keywords": ["iterate", "kronan", "iceland", "groceries"],
+  "license": "MIT",
+  "author": "Gunnar Holmsteinn",
+  "repository": { "type": "git", "url": "git+https://github.com/gunniho/iterate-kronan.git" },
+  "homepage": "https://github.com/gunniho/iterate-kronan#readme",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/kronan.d.ts",
+      "default": "./dist/kronan.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test test/*.test.ts",
+    "prepare": "npm run build"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260925.1",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.3"
+  }
+}

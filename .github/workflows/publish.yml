@@ -1,0 +1,22 @@
+name: pkg.pr.new
+# Every main commit is installable at
+#   https://pkg.pr.new/gunniho/iterate-kronan/iterate-kronan@<full sha>
+# Never to npm. Needs the pkg.pr.new GitHub App on this repository (github.com/apps/pkg-pr-new).
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npx pkg-pr-new publish

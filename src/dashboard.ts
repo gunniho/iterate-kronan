@@ -82,8 +82,18 @@ function barRows(
     .join("")}</div>`;
 }
 
+/** The numbers of a chart as a table, behind a toggle: a chart's own tooltips need a pointer
+ *  that hovers, and this is how a finger, a keyboard or a screen reader gets to the same figures. */
+function figures(summary: string, head: string[], rows: string[][]): string {
+  return `<details><summary>${esc(summary)}</summary><table class="figures"><thead><tr>${head
+    .map((cell, at) => `<th scope="col"${at ? ' class="num"' : ""}>${esc(cell)}</th>`)
+    .join("")}</tr></thead><tbody>${rows
+    .map((row) => `<tr>${row.map((cell, at) => `<td${at ? ' class="num"' : ""}>${esc(cell)}</td>`).join("")}</tr>`)
+    .join("")}</tbody></table></details>`;
+}
+
 function productTable(products: Summary["products"]): string {
-  return `<table><thead><tr><th>Product</th><th class="num">Orders</th><th class="num">Items</th><th class="num">Spent</th></tr></thead><tbody>${products
+  return `<table><thead><tr><th scope="col">Product</th><th scope="col" class="num">Orders</th><th scope="col" class="num">Items</th><th scope="col" class="num">Spent</th></tr></thead><tbody>${products
     .map(
       (product) =>
         `<tr><td class="name" title="${esc(product.name)}">${esc(product.name)}</td><td class="num">${count(product.orders)}</td><td class="num">${count(product.quantity)}</td><td class="num">${isk(product.amount)}</td></tr>`,
@@ -157,6 +167,11 @@ function priceSection(prices: PriceTrack): string {
     <p>One of each cost <b>${isk(prices.basketFirst)}</b> when you first bought them and <b>${isk(prices.basketLast)}</b> lately: <span class="change ${direction(basket)}">${percent(basket)}</span>. ${dearer} of ${prices.series.length} cost more now.</p>
     <h3>Price index: each product's first price is 100</h3>
     <div class="scroll">${indexChart(prices.index)}</div>
+    ${figures(
+      "The index month by month",
+      ["Month", "Products", "Index"],
+      [...prices.index].reverse().map((point) => [`${MONTHS[point.month - 1]} ${point.year}`, String(point.products), point.value.toFixed(0)]),
+    )}
     <div class="prices">${shown.map(priceCard).join("")}</div>
     ${more.length ? `<details><summary>${more.length} more products</summary><div class="prices">${more.map(priceCard).join("")}</div></details>` : ""}
     <p class="meta">Each line is the price of one, as you paid it, held until the next purchase. An offer shows as a dip, and a product sold by weight moves with what each one weighed. The two prices beside a name are the middle of your first three purchases and of your last three, so one offer does not pass for the price.</p></section>`;
@@ -311,7 +326,11 @@ export function serveDashboard(view: DashboardView): Response {
   const done = `${count(summary.orders)} orders in ${scope}, kept in this mind. ${checked}`;
   const body = `${switcher}${tabs}
     <div class="tiles">${tiles}</div>
-    <section class="panel"><header><h2>Spend per month</h2><span class="meta">${esc(scope)}</span></header><div class="scroll">${monthChart(summary)}</div></section>
+    <section class="panel"><header><h2>Spend per month</h2><span class="meta">${esc(scope)}</span></header><div class="scroll">${monthChart(summary)}</div>${figures(
+      "Month by month",
+      ["Month", "Orders", "Spent"],
+      [...summary.months].reverse().map((month) => [`${MONTHS[month.month - 1]} ${month.year}`, count(month.orders), isk(month.amount)]),
+    )}</section>
     <section class="panel"><header><h2>Spend by category</h2><span class="meta">${summary.categories.length} categories · share of ${esc(scope)}</span></header>${categories}</section>
     ${view.prices ? priceSection(view.prices) : ""}
     <div class="two">${years}${types}</div>

@@ -7,46 +7,60 @@ export const esc = (text: string): string => text.replace(/[&<>"]/g, (c) => ESCA
 const STYLE = `
   :root {
     color-scheme: light dark;
-    --bg: light-dark(#fafafa, #101113); --card: light-dark(#fff, #17181b);
-    --fg: light-dark(#18181b, #ededf0); --muted: light-dark(#6b6b76, #a1a3ad);
-    --border: light-dark(#e4e4e7, #2a2b30); --track: light-dark(#f1f1f3, #202126);
-    --chart: light-dark(#3b5bdb, #8d9bf5); --ok: light-dark(#1e8449, #5fd08a);
-    --bad: light-dark(#c0392b, #f08a7e); --warn: light-dark(#9a6700, #e3b341);
-    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    --bg: #fafafa; --card: #fff; --fg: #18181b; --muted: #63636e; --border: #e4e4e7; --track: #f1f1f3;
+    --chart: #3b5bdb; --ok: #1e8449; --bad: #c0392b; --warn: #8a5d00;
+    /* the reader's own text size, a step smaller: never a fixed pixel size */
+    font: 93.75%/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  /* a media query, not light-dark(): a browser without that function would lose every colour */
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #101113; --card: #17181b; --fg: #ededf0; --muted: #a1a3ad; --border: #2a2b30; --track: #202126; --chart: #8d9bf5; --ok: #5fd08a; --bad: #f08a7e; --warn: #e3b341; }
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--fg); -webkit-font-smoothing: antialiased; }
   main { max-width: 64rem; margin: 0 auto; padding: 1.25rem 1rem 4rem; }
   a { color: inherit; }
-  h1 { font-size: 1.5rem; font-weight: 600; letter-spacing: -.01em; margin: 0; }
-  h2 { font-size: 1.05rem; font-weight: 600; margin: 0; }
+  h1 { font-size: 1.5rem; font-weight: 600; letter-spacing: -.01em; margin: 0; text-wrap: balance; }
+  h2 { font-size: 1.05rem; font-weight: 600; margin: 0; text-wrap: balance; }
   h3 { font-size: .85rem; font-weight: 500; margin: 0; color: var(--muted); }
-  p { margin: .5rem 0; }
+  p { margin: .5rem 0; max-width: 72ch; text-wrap: pretty; }
   .top { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; }
   .top p { margin: .1rem 0 0; }
-  .icon { display: inline-grid; place-items: center; width: 2.5rem; height: 2.5rem; border-radius: .6rem; border: 1px solid var(--border); background: var(--card); color: var(--muted); }
-  .icon:hover { color: var(--fg); } .icon:focus-visible, a:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid var(--chart); outline-offset: 2px; }
+  .icon { display: inline-grid; place-items: center; flex: none; width: 44px; height: 44px; border-radius: .6rem; border: 1px solid var(--border); background: var(--card); color: var(--muted); }
+  .icon:focus-visible, a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--chart); outline-offset: 2px; border-radius: .3rem; }
+  .icon:focus-visible { border-radius: .6rem; }
   .panel { background: var(--card); border: 1px solid var(--border); border-radius: .7rem; padding: clamp(1rem, 2.5vw, 1.4rem); margin: 1rem 0; }
   .panel > header { display: flex; justify-content: space-between; align-items: baseline; gap: .75rem; flex-wrap: wrap; margin-bottom: .9rem; }
   .muted, .meta { color: var(--muted); font-size: .85rem; }
   .ok { color: var(--ok); } .bad { color: var(--bad); } .warn { color: var(--warn); }
-  code { font-size: .9em; word-break: break-all; }
+  code { font-size: .9em; overflow-wrap: anywhere; }
   label { display: block; margin: .6rem 0 .25rem; font-weight: 500; }
-  input { font: inherit; color: inherit; background: var(--bg); padding: .5rem .6rem; border-radius: .5rem; border: 1px solid var(--border); width: 14rem; max-width: 100%; }
-  button, .button { font: inherit; cursor: pointer; padding: .5rem .8rem; border-radius: .5rem; border: 1px solid var(--border); background: var(--card); color: inherit; text-decoration: none; display: inline-block; }
-  button:hover, .button:hover { background: var(--track); }
-  .primary { background: var(--fg); color: var(--bg); border-color: var(--fg); } .primary:hover { background: var(--fg); opacity: .9; }
+  /* 16px at the least: a smaller field makes an iPhone zoom the page on focus */
+  input { font: inherit; font-size: max(16px, 1rem); min-height: 44px; color: inherit; background: var(--bg); padding: .5rem .6rem; border-radius: .5rem; border: 1px solid var(--border); width: 14rem; max-width: 100%; }
+  button, .button { font: inherit; cursor: pointer; min-height: 44px; padding: .5rem .9rem; border-radius: .5rem; border: 1px solid var(--border); background: var(--card); color: inherit; text-decoration: none; display: inline-block; }
+  .button { display: inline-flex; align-items: center; }
+  button:disabled { opacity: .55; cursor: default; }
+  button:active:not(:disabled), .button:active { transform: scale(.98); }
+  .primary { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+  /* hover only where there is a pointer that hovers: on a touch screen it would stick after a tap */
+  @media (hover: hover) {
+    .icon:hover { color: var(--fg); }
+    button:hover:not(:disabled), .button:hover { background: var(--track); }
+    .primary:hover { background: var(--fg); opacity: .9; }
+    .tabs a:hover:not([aria-current]) { color: var(--fg); }
+    .chart .bar:hover { opacity: .75; }
+  }
   ul, ol { padding-left: 1.2rem; margin: .5rem 0; } li { margin: .4rem 0; }
   .tabs { display: flex; flex-wrap: wrap; gap: .35rem; margin: 0 0 1rem; }
-  .tabs a { padding: .3rem .7rem; border-radius: 99px; border: 1px solid var(--border); text-decoration: none; font-size: .9rem; color: var(--muted); background: var(--card); }
+  .tabs a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 .95rem; border-radius: 99px; border: 1px solid var(--border); text-decoration: none; font-size: .9rem; color: var(--muted); background: var(--card); }
   .tabs a[aria-current] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
   .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr)); gap: 1rem; }
-  .scroll { overflow-x: auto; } .scroll .chart { min-width: 38rem; }
+  .scroll { overflow-x: auto; } .scroll .chart { min-width: 44rem; }
   .tiles .panel { margin: 0; }
   .value { font-size: clamp(1.2rem, 4.6vw, 1.6rem); font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -.01em; margin: .15rem 0 0; }
   .chart { display: block; width: 100%; height: auto; overflow: visible; }
-  .chart .bar { fill: var(--chart); } .chart .bar:hover { opacity: .75; }
-  .chart .grid { stroke: var(--border); stroke-width: 1; } .chart text { fill: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  .chart .bar { fill: var(--chart); }
+  .chart .grid { stroke: var(--border); stroke-width: 1; } .chart text { fill: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
   .rows { display: grid; gap: .5rem; font-size: .92rem; }
   .row { display: grid; grid-template-columns: minmax(7rem, 13rem) 1fr 7.5rem 4.75rem; grid-template-areas: "name track num share"; gap: .2rem .8rem; align-items: center; }
   .row .name { grid-area: name; } .row .track { grid-area: track; } .row .num { grid-area: num; } .row .share { grid-area: share; }
@@ -65,8 +79,9 @@ const STYLE = `
   .chart .area { fill: var(--chart); opacity: .1; } .chart .dot { fill: var(--chart); } .chart .hit { fill: transparent; }
   .chart .base { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 4; }
   .prices { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr)); gap: .75rem; margin-top: 1rem; }
-  .price { border: 1px solid var(--border); border-radius: .6rem; padding: .7rem .8rem .5rem; min-width: 0; }
-  .price h3 { color: var(--fg); font-weight: 500; font-size: .9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .price { border: 1px solid var(--border); border-radius: .45rem; padding: .7rem .8rem .5rem; min-width: 0; }
+  /* two lines of a name at the most, and room for two, so the charts of a row line up */
+  .price h3 { color: var(--fg); font-weight: 500; font-size: .9rem; line-height: 1.3; min-height: 2.6em; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
   .price .was { display: flex; justify-content: space-between; align-items: baseline; gap: .5rem; font-size: .82rem; color: var(--muted); font-variant-numeric: tabular-nums; margin: .15rem 0 .35rem; }
   .price .spark { display: block; width: 100%; height: 3.4rem; overflow: visible; }
   .up { color: var(--bad); } .down { color: var(--ok); } .flat { color: var(--muted); }
@@ -74,9 +89,14 @@ const STYLE = `
   .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); gap: 1rem; margin: 1rem 0; align-items: start; }
   .two .panel { margin: 0; }
   .sync { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; }
-  progress { width: 100%; height: .5rem; accent-color: var(--chart); margin-top: .6rem; }
+  progress { display: block; width: 100%; height: .5rem; accent-color: var(--chart); margin-top: .6rem; }
+  /* the bar keeps its room while it is not shown, so the words above it never jump */
+  progress[hidden] { visibility: hidden; }
   .empty { text-align: center; padding: 3rem 1rem; }
-  details summary { cursor: pointer; width: fit-content; color: var(--muted); font-size: .9rem; margin-top: .6rem; }
+  details summary { cursor: pointer; width: fit-content; min-height: 44px; display: flex; align-items: center; gap: .4rem; color: var(--muted); font-size: .9rem; margin-top: .3rem; }
+  details summary::before { content: "+"; font-weight: 600; } details[open] > summary::before { content: "−"; }
+  details summary::-webkit-details-marker { display: none; }
+  .figures { max-width: 30rem; }
   @media (max-width: 40rem) { .row, .two .row { grid-template-columns: 1fr auto; grid-template-areas: "name num" "track track"; } .row .share { display: none; } }
 `;
 
@@ -157,7 +177,8 @@ export function serveSettings(view: SettingsView): Response {
       </ol>
       <form method="post" action="connect">
         <label for="account">Account name</label>
-        <input id="account" name="account" value="${view.accounts.length ? "" : "personal"}" required pattern="[a-z0-9][a-z0-9\\-]{0,39}" autocomplete="off" spellcheck="false" />
+        <input id="account" name="account" value="${view.accounts.length ? "" : "personal"}" required pattern="[a-z0-9][a-z0-9\\-]{0,39}" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" aria-describedby="account-hint" />
+        <p class="muted" id="account-hint">Lower-case letters, digits and hyphens, such as <code>personal</code> or <code>family</code>.</p>
         <button>Continue</button>
       </form>
     </section>

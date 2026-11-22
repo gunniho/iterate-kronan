@@ -70,7 +70,7 @@ export function kronanFetch(
   itx: KronanFetchItx,
   account: string,
   path: string,
-  init: { method?: string; body?: string; signal?: AbortSignal } = {},
+  init: { method?: string; body?: string } = {},
 ): Promise<Response> {
   if (!path.startsWith("/") || path.startsWith("//"))
     throw new Error(`kronan: "${path}" is no path under /api/v1 (it starts with one "/")`);
@@ -86,7 +86,6 @@ export function kronanFetch(
         ...(init.body !== undefined && { "content-type": "application/json" }),
       },
       ...(init.body !== undefined && { body: init.body }),
-      ...(init.signal && { signal: init.signal }),
     }),
   );
 }
@@ -98,10 +97,21 @@ export type Identity =
   | { status: "refused"; http: number }
   | { status: "unknown" };
 
-/** Asks Krónan whose token an account's secret holds. It never throws. */
-export async function identityOf(itx: KronanFetchItx, account: string): Promise<Identity> {
+/** Asks Krónan whose token an account's secret holds, for at most `timeoutMs`. It never throws.
+ *  The wait is a race, not an AbortSignal: a signal does not cross to the mind's `itx.fetch`. */
+export async function identityOf(
+  itx: KronanFetchItx,
+  account: string,
+  timeoutMs: number = 8000,
+): Promise<Identity> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const response = await kronanFetch(itx, account, "/me/", { signal: AbortSignal.timeout(8000) });
+    const response = await Promise.race([
+      kronanFetch(itx, account, "/me/"),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("timeout")), timeoutMs);
+      }),
+    ]);
     if (response.status === 401 || response.status === 403)
       return { status: "refused", http: response.status };
     if (!response.ok) return { status: "unknown" };
@@ -114,6 +124,8 @@ export async function identityOf(itx: KronanFetchItx, account: string): Promise<
     };
   } catch {
     return { status: "unknown" };
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
   }
 }
 

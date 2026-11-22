@@ -276,6 +276,19 @@ test("identityOf never throws", async () => {
   assert.deepEqual(await answer(() => new Response("<html>")), { status: "unknown" });
   assert.deepEqual(await answer(() => Response.json({ type: "user" })), { status: "unknown" });
   assert.deepEqual(await answer(() => Promise.reject(new Error("down"))), { status: "unknown" });
+  // a Krónan that never answers is given up on
+  assert.deepEqual(await identityOf({ fetch: () => new Promise(() => {}) }, "personal", 20), { status: "unknown" });
+  // the mind's fetch takes no AbortSignal ("AbortSignal serialization is not enabled"): none is sent
+  const strict = {
+    fetch: async (request: Request) => {
+      if (request.signal.aborted) throw new Error("aborted");
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      if (request.signal.aborted) throw new Error("a signal was attached");
+      return Response.json({ type: "user", name: "Ada" });
+    },
+  };
+  assert.deepEqual(await identityOf(strict, "personal", 10), { status: "unknown" });
+  assert.deepEqual(await identityOf(strict, "personal"), { status: "ok", kind: "user", name: "Ada" });
 });
 
 test("the purchase rule holds every POST but the free paths, in the shape the platform takes", () => {

@@ -26,9 +26,20 @@ mind's root; never take a token in chat). Follow the steps in order.
 
 ## 1. The package, in the mind's config repo
 
-Run the script of
+The package is on npm. In one commit to the mind's config repo (`/repos/config`), with the tip
+you read as `parent`:
+
+```text
+package.json   "dependencies": { "iterate-kronan": "<the newest version on npm, exact>" }
+worker.ts      import { kronan } from "iterate-kronan";
+worker.ts      const integrations: Integration[] = [kronan()];
+```
+
+Pin an exact version (`npm view iterate-kronan version`), never a range. Keep what the array
+already lists. The script of
 [add-to-a-mind.md](https://github.com/jonastemplestein/iterategrations/blob/main/add-to-a-mind.md)
-with these values:
+shows how to patch, probe and commit safely, but it looks for a pkg.pr.new build, which this
+package does not have: use its steps with the npm version as the dependency. Its values:
 
 ```js
 const PACKAGE = "iterate-kronan";
@@ -39,17 +50,8 @@ const MEMBER = "";
 const FILES = {};
 ```
 
-That script looks for the build under `jonastemplestein/iterategrations`. This package's builds
-are under `gunniho/iterate-kronan`: before you run it, replace both
-`pkg.pr.new/jonastemplestein/iterategrations/` in the script with
-`pkg.pr.new/gunniho/iterate-kronan/`. It then pins the newest `main` build at its full commit:
-
-```text
-"iterate-kronan": "https://pkg.pr.new/gunniho/iterate-kronan/iterate-kronan@<full sha>"
-```
-
-By hand it is that dependency in `package.json`, the import, and `kronan()` in
-`const integrations: Integration[] = [...]` of `worker.ts`, in one commit.
+Wait for `mind/worker-updated` (or `mind/worker-update-failed`, in which case the commit is not
+live).
 
 Check it is live: the card is there, with no status and **Connect** first.
 
@@ -272,9 +274,8 @@ npm install
 npm test
 ```
 
-The tests run in Node against `dist`, with a fake mind and a fake of Krónan's `/me/`. Every commit
-on `main` is built by [pkg.pr.new](https://pkg.pr.new), which needs its GitHub App on the
-repository.
+The tests run in Node against `dist`, with a fake mind and a fake of Krónan's `/me/`. A release is
+`npm version <patch|minor>` and `npm publish`.
 
 ## License
 
